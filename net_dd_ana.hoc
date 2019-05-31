@@ -1,0 +1,374 @@
+////////////////////
+/* net_dd_ana.hoc */
+////////////////////
+
+/* -------------------------------------------------------------------------- */
+/* -------------- ANALYSIS -------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+strdef strvar   	// str variable for file name template
+objref dfile
+dfile = new File()
+
+objref AP_IN_cells, AP_IN_times, AP_PN_cells, AP_PN_times, Cellvar_IN, Cellvar_PN
+objref AP_IN_mx[nIN+1], AP_PN_mx[nPN+1]			// matrix for binned AP data
+
+Cellvar_IN = new Vector(nIN)
+Cellvar_PN = new Vector(nPN)
+
+binw = 0.2				// bin width for evaluating coherence - up to 500 Hz
+bins = int(tstop/binw)			// n of bins
+
+/* Saving of the APs ---------------------------------------------------------*/
+AP_IN_cells = new Vector((tstop*500/1000)*nIN)		// two vectors to store cell_i & time of APs
+AP_IN_times = new Vector((tstop*500/1000)*nIN)		// assumes a max firing freq of 500Hz!
+AP_IN_count = 0
+AP_PN_cells = new Vector((tstop*500/1000)*nPN)		
+AP_PN_times = new Vector((tstop*500/1000)*nPN)		
+AP_PN_count = 0
+
+for i = 0,nIN {
+    AP_IN_mx[i] = new Vector(bins+1)	// array of vectors. For each cell, there is one
+}                                     // vector which has for each time-step-bin one element
+                                      // in which a "1" indicates an AP and a "0" indicates no AP.
+for i = 0,nPN {
+    AP_PN_mx[i] = new Vector(bins+1)	
+} 
+
+proc setbin() {local b
+   b = $1
+   if (b<0.2) {b = 0.2}			// do not allow smaller values then 0.2 ms for bin size
+					// this would mean an >500Hz osc. we don't look at that now
+   binw = b				// matrix was sized to this max.
+   bins = int(tstop/binw)
+}
+
+proc AP2_mx() {local i
+// form a bin matrix from AP time data vectors 
+
+   for i = 0,nIN { AP_IN_mx[i].fill(0) }
+    
+   for i = 0,AP_IN_count-1 {		
+		AP_IN_mx[AP_IN_cells.x[i]].x[int(AP_IN_times.x[i]/binw)] = 1
+		AP_IN_mx[nIN].x[int(AP_IN_times.x[i]/binw)] += 1
+					// count number of active cells 
+					// for the histogram
+   }
+  
+   for i = 0,nPN { AP_PN_mx[i].fill(0) }
+    
+   for i = 0,AP_PN_count-1 {		
+		AP_PN_mx[AP_PN_cells.x[i]].x[int(AP_PN_times.x[i]/binw)] = 1
+		AP_PN_mx[nPN].x[int(AP_PN_times.x[i]/binw)] += 1
+					// count number of active cells 
+					// for the histogram
+   }
+}
+
+proc saveHist() { local i
+	// interneurons
+  sprint(strvar,"%si_hist.tab",filestr)
+	dfile.wopen(strvar)
+	
+	setbin(1) 
+  AP2_mx()					// bin data at 1 ms
+	
+  for i = int(hbcoh_start)/binw,int(hbcoh_end)/binw {
+		dfile.printf("%f\t%d\n",i*binw,AP_IN_mx[nIN].x[i]) // no of active cells stored here
+	}
+	dfile.close() 
+
+	rtime = stopsw()
+	printf("%d:%d -- icell-Histogram data saved in file %s. \n",rtime/60,rtime%60,strvar)
+	
+	// principal neurons
+	sprint(strvar,"%se_hist.tab",filestr)
+	dfile.wopen(strvar)
+	
+	for j = int(hbcoh_start)/binw,int(hbcoh_end)/binw {
+		dfile.printf("%f\t%d\n",j*binw,AP_PN_mx[nPN].x[j]) // no of active cells stored here
+	}
+	dfile.close() 
+
+	rtime = stopsw()
+	printf("%d:%d -- ecell-Histogram data saved in file %s. \n",rtime/60,rtime%60,strvar)
+}
+
+proc save_raster() {         // Saves the spike data in order to rebuild the raster plot.
+  // interneurons
+  sprint(strvar,"%si_raster.tab",filestr)
+  dfile.wopen(strvar)
+  dfile.printf("Time\tCell no\n")
+  for i = 0,AP_IN_count-1 { dfile.printf("%f\t%d\n",AP_IN_times.x[i],AP_IN_cells.x[i]) }
+  dfile.close()
+  
+  // principal neurons
+  sprint(strvar,"%se_raster.tab",filestr)
+  dfile.wopen(strvar)
+  dfile.printf("Time\tCell no\n")
+  for i = 0,AP_PN_count-1 { dfile.printf("%f\t%d\n",AP_PN_times.x[i],AP_PN_cells.x[i]) }
+  dfile.close()               
+}
+
+/* Saving of the synaptic conductances ---------------------------------------*/
+objref gII, gIE, gEI
+if (export_traces == 1) {
+    gII = new Matrix(nIN,1+tstop/t_step)
+    gIE = new Matrix(nPN,1+tstop/t_step)
+    gEI = new Matrix(nIN,1+tstop/t_step)
+}
+
+func get_total_gII() { local s,j
+    s = 0
+    for j = 0,Syn_II_N-1 {
+        s = s + interneuron[$1].syn_II[j].g
+    }
+    return s
+}
+
+proc write_gII() { local i  // $1 time step --> element of the record matrix
+    for i = 0,nIN-1 {
+        gII.x[i][$1] = get_total_gII(i)
+    }
+}
+
+proc save_gII() { 
+    sprint(strvar,"%sgII.tab",filestr)
+    dfile.wopen(strvar)
+    gII.fprint(0,dfile)
+}
+
+func get_total_gIE() { local s,j
+    s = 0
+    for j = 0,Syn_IE_N-1 {
+        s = s + principalneuron[$1].syn_IE[j].g
+    }
+    return s
+}
+
+proc write_gIE() { local i  // $1 time step --> element of the record matrix
+    for i = 0,nPN-1 {
+        gIE.x[i][$1] = get_total_gIE(i)
+    }
+}
+
+proc save_gIE() { 
+    sprint(strvar,"%sgIE.tab",filestr)
+    dfile.wopen(strvar)
+    gIE.fprint(0,dfile)
+}
+
+proc write_gEI() { local i  // $1 time step --> element of the record matrix
+    for i = 0,nIN-1 {
+        gEI.x[i][$1] = interneuron[i].syn_EI.g
+    }
+}
+
+proc save_gEI() { 
+    sprint(strvar,"%sgEI.tab",filestr)
+    dfile.wopen(strvar)
+    gEI.fprint(0,dfile)
+}
+
+
+/* Saving of the inhibitory synaptic currents (LFP) --------------------------*/
+objref lfp
+
+if (record_lfp == 1) {
+    lfp = new Matrix(nIN,1+tstop/t_step)
+}
+
+func get_moment_lfp() { local j,s,pirat,p // $1: position within network (#IN)
+    s = 0
+    for j = 0,Syn_II_N-1 {
+        s = s + interneuron[$1].syn_II[j].g
+    }
+    for pirat = 0,int(nPN/nIN)-1 {
+        p = ($1*int(nPN/nIN))+pirat
+        for j = 0,Syn_IE_N-1 {
+          s = s + principalneuron[p].syn_IE[j].g
+        }
+    }
+  
+    return s    
+}
+
+proc save_lfp() { 
+    sprint(strvar,"%slfp.tab",filestr)
+    dfile.wopen(strvar)
+    lfp.fprint(0,dfile)
+}
+
+/* Saving the connectivity matrices ----------------------------------------- */
+objref conmx_II, conmx_IE, conmx_EI, conmx_EE
+proc save_conmx() {
+  sprint(strvar,"%sconmxII.tab",filestr)
+  dfile.wopen(strvar)
+  conmx_II.fprint(dfile)
+  
+  sprint(strvar,"%sconmxIE.tab",filestr)
+  dfile.wopen(strvar)
+  conmx_IE.fprint(dfile)
+  
+  sprint(strvar,"%sconmxEI.tab",filestr)
+  dfile.wopen(strvar)
+  conmx_EI.fprint(dfile)
+  
+  sprint(strvar,"%sconmxEE.tab",filestr)
+  dfile.wopen(strvar)
+  conmx_EE.fprint(dfile)
+}
+
+
+func ind_gcomp() { local j, G // $1 gsyn, $2 rise, $3 decay
+  for j = 0,(100/dt)-1 {
+      G = G+($1*(exp(-(j*dt)/$3)-exp(-(j*dt)/$2)))
+  }
+  return G
+}
+
+
+/* Saving of the membrane voltages -------------------------------------------*/
+objref vIN, vPN
+if (export_traces == 1) {
+    vIN = new Matrix(nIN,1+tstop/t_step)
+    vPN = new Matrix(nPN,1+tstop/t_step)
+}
+
+proc write_vIN() { local i  // $1 time step --> element of the record matrix
+    for i = 0,nIN-1 {
+        vIN.x[i][$1] = interneuron[i].soma_interneuron.v(0.5)
+    }
+}
+
+proc write_vPN() { local i  // $1 time step --> element of the record matrix
+    for i = 0,nPN-1 {
+        vPN.x[i][$1] = principalneuron[i].soma_principalneuron.v(0.5)
+    }
+}
+
+proc save_vIN() {
+    sprint(strvar,"%svIN.tab",filestr)
+    dfile.wopen(strvar)
+    vIN.fprint(0,dfile)    
+}
+
+proc save_vPN() {
+    sprint(strvar,"%svPN.tab",filestr)
+    dfile.wopen(strvar)
+    vPN.fprint(0,dfile)    
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* -------------- PLOTTING -------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+objref v_IN_plt, v_PN_plt
+
+proc initv_IN_Plt() { local i		// plot voltage traces
+ v_IN_plt = new Graph(0)          	// init Graph object instance
+
+ v_IN_plt.size(tsyn,tstop,-80,80)	// window size
+ v_IN_plt.label(0.95, 0.58, "ms")	// x label
+ v_IN_plt.label(0.01, 0.95, "nS")	// y label
+ v_IN_plt.label(0.01, 0.80, "EPSC")	// y label
+ v_IN_plt.label(0.01, 0.65, "IPSC")	// y label
+ v_IN_plt.label(0.01, 0.55, "mV")	// y label
+ v_IN_plt.label(0.95, 0.9, "IN")
+ v_IN_plt.label(1,0)			// move for next labels out
+ v_IN_plt.view(tsyn, -80, tstop-tsyn, 160, 0, 20, 300, 230)
+
+ for i = 0,mx_v_IN-1 {
+   sprint(strvar,"%s%d%s","interneuron[n_v_IN_",i,"].soma_interneuron.v(0.5)")
+   v_IN_plt.addvar(strvar,i%4+1 ,1)
+ }
+}
+
+proc initv_PN_Plt() { local i		// plot voltage traces
+ v_PN_plt = new Graph(0)          	// init Graph object instance
+
+ v_PN_plt.size(tsyn,tstop,-80,80)	// window size
+ v_PN_plt.label(0.95, 0.58, "ms")	// x label
+ v_PN_plt.label(0.01, 0.95, "nS")	// y label
+ v_PN_plt.label(0.01, 0.80, "EPSC")	// y label
+ v_PN_plt.label(0.01, 0.65, "IPSC")	// y label
+ v_PN_plt.label(0.01, 0.55, "mV")	// y label
+ v_PN_plt.label(0.95, 0.9, "PN")
+ v_PN_plt.label(1,0)			// move for next labels out
+ v_PN_plt.view(tsyn, -80, tstop-tsyn, 160, 0, 320, 300, 230)
+
+ for i = 0,mx_v_PN-1 {
+   sprint(strvar,"%s%d%s","principalneuron[n_v_PN_",i,"].soma_principalneuron.v(0.5)")
+   v_PN_plt.addvar(strvar,i%4+1 ,1)
+ }
+}
+
+
+objref r_plt, h_plt
+
+proc initr_Plt() {
+  r_plt = new Graph(0)         	  		// init Graph object instance
+
+  r_plt.size(0,tstop,0,nPN)				// window size
+  r_plt.label(0.95, 0.02, "ms")			// x label
+  r_plt.label(0.01, 0.81, "cell#")	// y label
+  r_plt.color(2)
+  r_plt.label(0.9, 0.9, "INs")	    // cell type
+  r_plt.color(4)
+  r_plt.label("PNs")	              // cell type
+  r_plt.view(0,0,tstop, nPN, 320, 20, 300, 230)
+}
+
+proc inithPlt() {						// plot raster of APs (cell x time matrix)
+  h_plt = new Graph(0)           			// init Graph object instance
+
+  h_plt.size(0,tstop,0,0.5)			// window size
+  h_plt.label(0.95, 0.02, "ms")			// x label
+  h_plt.label(0.01, 0.81, "% cell")	// y label
+  h_plt.color(2)
+  h_plt.label(0.9, 0.9, "INs")	    // cell type
+  h_plt.color(4)
+  h_plt.label("PNs")	              // cell type
+  h_plt.view(0,0,tstop,0.5, 640, 20, 300, 230)
+}
+
+proc plotAPs() {
+  r_plt.erase()
+  
+  for i = 0,AP_IN_count-1 {
+     r_plt.mark(AP_IN_times.x[i],(AP_IN_cells.x[i]+1)*(nPN/nIN),"o",1,2,1)
+  }
+   
+  for j = 0,AP_PN_count-1 {
+     r_plt.mark(AP_PN_times.x[j],AP_PN_cells.x[j]+1,"o",1,4,1)
+  }
+    
+  r_plt.flush()
+  doEvents()
+}
+
+proc plotHist() { local i
+   setbin(1) AP2_mx()         // we need the matrix first        
+   h_plt.erase()	
+   h_plt.beginline(2,1)
+         for i = 0,bins-1 { h_plt.line(i*binw,AP_IN_mx[nIN].x[i]/nIN) }
+   h_plt.beginline(4,1)
+         for i = 0,bins-1 { h_plt.line(i*binw,AP_PN_mx[nPN].x[i]/nPN) }  
+   h_plt.flush()
+   doEvents()
+}
+
+proc saveAPPlt(){
+   sprint(strvar,"%sAP_plot.eps",filestr)
+   r_plt.printfile(strvar)
+      
+   rtime = stopsw()
+   printf("%d:%d -- Raster plot saved in file %s. \n",rtime/60,rtime%60,strvar)
+}
+
+proc savehPlt(){
+   sprint(strvar,"%sh_plot.eps",filestr)
+   h_plt.printfile(strvar)
+}
+

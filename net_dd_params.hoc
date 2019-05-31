@@ -1,0 +1,316 @@
+//////////////////////////////////////////////////////////
+/* net_dd_params.hoc -----------------------------------*/
+//////////////////////////////////////////////////////////
+
+strdef fnbase
+sprint(fnbase,"DDnet")
+
+/* Distance dependence ------------------------------------------------------ */
+   
+   // IN-IN Synapses
+   shuffled_II = 0
+   g_scale_II = 1
+   a_ddg_II = 0
+   b_ddtau_II = 0
+   
+   // IN-PN Synapses
+   shuffled_IE = 0
+   g_scale_IE = 1
+   a_ddg_IE = 0
+   b_ddtau_IE = 0 
+   
+/* Network mode? ------------------------------------------------------------ */ 
+
+   feedback = 0           // does the network contain feedback excitation on INs?
+   recurrent = 0          // is the network a recurrent one (CA3) or not (DG)?
+   
+/* Spatial input --------------------------------------------------------- */          
+
+   IN_input_format = 2
+   PN_input_format = 2    // '0': no spatial input
+                // '1': spatial input applied through current injection
+                // '2': spatial input applied through synaptic events   
+
+/* Define global simulation ctrl params ---------------------------------- */ 
+
+   celsius = 6.3	// C - temperature 
+   secondorder = 1
+
+// temperature has no real meaning in the simulations 
+// this is the def.temp in Neuron (HH. model)
+// timeconstants of m, h and n are adjusted directly in the mod file
+
+   t = 0          	// ms - simulation starts 
+   			// BUT synaptic connections are activated only at t = 0
+   tdrv1 = 0  
+   tdrv2 = 50		// ms - init period to randomize firing pattern	75	
+   tsyn = 100    // 150
+   trun = 700                                                 
+   tstop = trun+tsyn	// ms - simulation ends
+
+   dt = 0.01      	// ms - simulation time step (=100kHz)
+   t_step = 0.1		// ms - collecting data only @10kHz  for analysis
+   n_step = int(t_step/dt)	// should be 10 ;-) sample is taken every n cycle
+   inj_step = 1    // ms - shaped input time step
+
+/* Define network size & connectivity pattern ---------------------------- */
+
+   nIN = 200		      // number of neurons in the network
+	 nPN = 800		
+
+	 // IN to IN
+   Msyn_II = 60 		         // Average number of presynaptic neurons, convergence factor
+   sd_ddcon_II = 25          // Space constant of the connectivity. This value was adjusted by trial 
+                             // so that a connection probability of 1 is not exceeded. This guarantees 
+                             // that there is really an Msyn of the given value set. 
+   max_ddcon_II = (nIN/2)-1  // Maximal distance between two connected INs? 
+                             // (given in IN-index numbers)                 
+      
+   // IN to PN
+   Msyn_IE = 20       
+   sd_ddcon_IE = 25   
+   max_ddcon_IE = (nIN/2)-1  
+
+   // PN to IN
+   Msyn_EI = 50
+   sd_ddcon_EI = 10*int(nPN/nIN)       
+   max_ddcon_EI = (nPN/2)-1     
+   
+   // PN to PN
+   Msyn_EE = 10
+   sd_ddcon_EE = 10*int(nPN/nIN)       
+   max_ddcon_EE = (nPN/2)-1     
+
+   //GAPS
+   Gaps = 1			          // Boolean - gaps inserted or not
+   GapR = 100000 		      // MOhm resistance corresponding to 0.01 nS conductance
+                          // that correspondes to 1nS for real cells of ~10000 um^2 surface
+                          // x 0.01 mS/cm^2
+   
+/* Constant IClamp excitatory drive ----------------------------------------- */   
+   Imu_interneuron = 0			  // uA/cm^2 - amplitude here as a density
+   Icv_interneuron = 0.1			// coeff.var. of the current distribution
+
+   Imu_principalneuron = 0		// uA/cm^2 - amplitude here as a density
+   Icv_principalneuron = 0.1	// coeff.var. of the current distribution
+   
+/* Background synaptic drive ------------------------------------------------ */
+   //----------------Interneurons
+   N_BGStim_IN = nIN
+   BGStim_f_IN = 300
+   BGStim_N_IN = 2*trun*BGStim_f_IN/1000
+   BGStim_noise_IN = 0.5
+   
+   BGSyn_rise_IN = 0.1
+   BGSyn_decay_IN = 2
+   BGSyn_strength_IN = 0.01
+   BGSyn_strength_cv_IN = 0.2
+   
+   BGCon_dd_IN = 0        // Is the background input spatially correlated?
+   BGCon_N_IN = 1
+   BGCon_SD_IN = 3
+   
+   //----------------Principalneurons
+   N_BGStim_PN = nPN
+   BGStim_f_PN = 500
+   BGStim_N_PN = 2*trun*BGStim_f_PN/1000
+   BGStim_noise_PN = 0.1
+   
+   BGSyn_rise_PN = 0.1
+   BGSyn_decay_PN = 2
+   BGSyn_strength_PN = 0.02
+   BGSyn_strength_cv_PN = 0.1
+   
+   BGCon_dd_PN = 0        // Is the background input spatially correlated?
+   BGCon_N_PN = 1
+   BGCon_SD_PN = 3
+  
+/* Define shaped input ----------------------------------------------------- */
+   //----------------Interneurons
+   tINinj_on = 400
+   tINinj_off = 800
+   tvarINinj = 3      // Indicates the variability in the onset of the stimulus for different cells.
+   // The spatial parameters for the two / one input:
+   spainjIN_M1 = 100  // center of the first input
+   spainjIN_sd1 = 20  // SD in case of a Gaussian input, width in case of a square input
+   spainjIN_M2 = 120  // center of the second input
+   spainjIN_sd2 = 10  // SD in case of a Gaussian input, width in case of a square input
+   spainjIN_ratio = 1 // Ratio between input1 and input2: Amp(input1) = 1, Amp(input2) = spainj_ratio
+   
+   // a) IClamp
+   INinj_amp = 0
+   
+   // b) Synaptic events
+   IN_N_SIGNStim = nIN
+   IN_SIGNStim_f = 600
+   IN_SIGNStim_N = (tINinj_off-tINinj_on)*IN_SIGNStim_f/1000
+   IN_SIGNStim_noise = 0.1
+  
+   IN_SIGNSyn_rise = 0.1
+   IN_SIGNSyn_decay = 2
+   IN_SIGNSyn_strength = 0.01
+  
+   IN_SIGNCon_rnd = 0        // Does the input wiring contain some randomness?
+   IN_SIGNCon_N = 1
+   
+   //----------------Principalneurons
+   tPNinj_on = 400
+   tPNinj_off = 800
+   tvarPNinj = 20     // Indicates the variability in the onset of the stimulus for different cells.
+   // The spatial parameters for the two / one input:
+   spainjPN_M1 = 100  // center of the first input
+   spainjPN_sd1 = 20  // SD in case of a Gaussian input, width in case of a square input
+   spainjPN_M2 = 120  // center of the second input
+   spainjPN_sd2 = 10  // SD in case of a Gaussian input, width in case of a square input
+   spainjPN_ratio = 1 // Ratio between input1 and input2: Amp(input1) = 1, Amp(input2) = spainj_ratio
+   
+   // a) IClamp
+   PNinj_amp = 0
+   
+   // b) Synaptic events
+   PN_N_SIGNStim = nPN
+   PN_SIGNStim_f = 6000
+   PN_SIGNStim_N = (tPNinj_off-tPNinj_on)*PN_SIGNStim_f/1000
+   PN_SIGNStim_noise = 0.1
+  
+   PN_SIGNSyn_rise = 0.1
+   PN_SIGNSyn_decay = 2
+   PN_SIGNSyn_strength = 0.02
+  
+   PN_SIGNCon_rnd = 0        // Does the input wiring contain some randomness?
+   PN_SIGNCon_N = 1
+   
+   // These vectors are defined here, because they are needed for constructing the
+   // cell models! 
+   objref temiinj_IN, temiinj_PN, iinj_time, spaiinj_IN, spaiinj_PN
+    
+/* Define geometry of neurons --------------------------------------------- */ 
+
+   n_d_interneuron = 5.6419			    // um - diam to give 100 um^2 surface
+   n_L_interneuron = 5.6419			    // um - length
+   n_seg_interneuron = 1				    // single compartment
+
+   n_d_principalneuron = 5.6419			// um - diam to give 100 um^2 surface
+   n_L_principalneuron = 5.6419			// um - length
+   n_seg_principalneuron = 1			  // single compartment
+   
+   // No real meaning as all conductances and currents are defined by density parameters!
+
+/* Define cable params ---------------------------------------------------- */ 
+
+   ARes_interneuron = 172			  // ohm cm	- axial resistance
+   MCap_interneuron = 0.93			// uF/cm^2	- membrane capacitance
+   Rm_interneuron = 7600			  // ohm cm^2 	- membrane resistance
+
+   ARes_principalneuron = 194		// ohm cm	- axial resistance
+   MCap_principalneuron = 1.01	// uF/cm^2	- membrane capacitance
+   Rm_principalneuron = 38000		// ohm cm^2 	- membrane resistance  
+				
+	 // Defines a leakage cond. of 0.1 mS/cm^2
+	 // This is built into the mod file, it is here only for reference 
+			
+   Ek_interneuron = -90
+   shift_interneuron = 0
+   
+   Ek_principalneuron = -90
+   gna_principalneuron = 0.01
+   shift_principalneuron = 13
+   ena_principalneuron = 55
+   gkdr_principalneuron = 0.015
+   gka_principalneuron = 0
+   gkm_principalneuron = 0
+     
+   // Initial membrane voltages
+   Vrest_interneuron = -65
+   Vmax_interneuron = Vrest_interneuron-2
+   Vmin_interneuron = Vrest_interneuron+2
+
+   Vrest_principalneuron = -75
+   Vmax_principalneuron = Vrest_principalneuron-2
+   Vmin_principalneuron = Vrest_principalneuron+2
+
+/* Define Synaptic Currents ---------------------------------------------- */
+//  using:
+//  - a Exp2Syn object (parameters: tau1 - rise and  tau2 - decay
+//    timeconstants [ms], e - reversal potantial [mV])
+//  - a NetCon object (parameters: threshold - will be set to 0 mV (IN) and -20 mV (PN) respectively, 
+//    delay [ms] and weight - variable between 0 and 1 [1 corresponding to 1 uS])
+
+   SynDel = 0.5			// ms	- synaptic delay
+   SynADel= 0.2			// ms	- conduction delay unit 
+	 // 	between 2 adjacent INs (distance = 0.05 mm; vAP = 0.25 mm/ms)
+				
+/* --------------- IPSCs onto Interneurons ---------------------------------- */ 
+   Syn_II_N = 50                  // number of synapses on each neuron - remember to change the number also in the imodel-file!
+   Syn_II_rise = 0.16 		        // ms	- IPSC rise 
+   Syn_II_decay_standard = 1.88	 	// ms	- IPSC decay 
+   SynE_II = -55			            // mV	- IPSC rev. potential
+   g_standard_II = 0.2*g_scale_II
+   // SynG_II will be calculated later
+   SynGcv_II = 0.1			          // Variability of the SynG
+   
+   // DD in synaptic conductance
+   ddg_II_low = 0.1   // Lowest possible value for the synaptic conductance (as a factor! = %). 
+                      // It should correspond to a quantal conductance.
+   
+   // DD in the decay time constant
+   Syn_II_decay_bottom = 0.5
+   Syn_II_decay_top = 4.0
+  
+/* ----------------- IPSCs onto Principalneurons ---------------------------- */
+   Syn_IE_N = 50                  // number of synapses on each neuron - remember to change the number also in the imodel-file!
+   Syn_IE_rise = 0.16 		        // ms	- IPSC rise 
+   Syn_IE_decay_standard = 7.0	 	// ms	- IPSC decay 
+   SynE_IE = -65			            // mV	- IPSC rev. potential
+   g_standard_IE = 0.1*g_scale_IE
+   // SynG_IE will be calculated later
+   SynGcv_IE = 0.1			          // Variability of the SynG
+   
+   // DD in synaptic conductance
+   ddg_IE_low = 0.1   // Lowest possible value for the synaptic conductance (as a factor! = %). 
+                      // It should correspond to a quantal conductance.
+   
+   // DD in the decay time constant
+   Syn_IE_decay_bottom = 3.0
+   Syn_IE_decay_top = 13.0
+
+/* ----------------- EPSCs onto Interneurons -------------------------------- */
+   Syn_EI_rise = 0.2 		// ms	- EPSC rise, Geiger et al., 1997
+   Syn_EI_decay = 1	 	  // ms	- EPSC decay
+   SynE_EI = 0			    // mV	- EPSC rev. potential
+   SynG_EI = 0.05			  // mS/cm^2 - EPSC conductance density! 
+   SynGcv_EI = 0.1			// and its variability
+   
+/* ----------------- EPSCs onto Principalneurons ---------------------------- */
+   Syn_EE_rise = 0.2 		// ms	- EPSC rise
+   Syn_EE_decay = 1	 	  // ms	- EPSC decay
+   SynE_EE = 0			    // mV	- EPSC rev. potential
+   SynG_EE = 0.05			  // mS/cm^2 - EPSC conductance density! 
+   SynGcv_EE = 0.1			// and its variability
+
+/* Plotting ------------------------------------------------------------------*/
+   plotting = 0      // Boolean. Do you want plots at all?
+   export_traces = 0 // Boolean. Do you want to export voltage- and conductance traces?
+   record_lfp = 1    // Boolean. DO you want to export an LFP analogon?
+   
+/* Testing -------------------------------------------------------------------*/
+   conmx = 0               // export connectivity matrix?
+   
+/* Random --------------------------------------------------------------------*/
+   objref rdg, rduni, rdnorm, rdnormII, rdnormIE				
+   //rseed = 18
+
+   rdg = new Random(rseed)       // use for gaps
+   rdg.binomial(1,0.5)
+
+   rduni = new Random(rseed)		  // use for Vm, synapses 
+   rduni.uniform(0,1)	       
+
+   rdnorm = new Random(rseed)		// use for exc.drv, synaptic connectivity
+   rdnorm.normal(0,1)
+   
+   rdnormII = new Random(rseed)  // use for the nodd synaptic property picking procedure
+   rdnormII.normal(0,sd_ddcon_II*sd_ddcon_II)
+   
+   rdnormIE = new Random(rseed)  // use for the nodd synaptic property picking procedure
+   rdnormIE.normal(0,sd_ddcon_IE*sd_ddcon_IE)

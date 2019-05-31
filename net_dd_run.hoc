@@ -1,0 +1,259 @@
+////////////////////
+/* net_dd_run.hoc */
+////////////////////
+
+//load_file("nrngui.hoc")
+
+/* -------------------------------------------------------------------------- */
+/* -------------- PARAMETERS   ---------------------------------------------- */
+/* -------------------------------------------------------------------------- */	 
+strdef fnbase,simn,filestr
+
+simnumber = 1
+print "simnumber is ", simnumber
+
+rseed = 17    // Seed of the random number generators.
+print "seed is ", rseed
+
+load_file("net_dd_params.hoc")
+
+sprint(simn,"%d",simnumber)
+sprint(filestr,"%s_%s_",fnbase,simn)
+
+/* -------------------------------------------------------------------------- */
+/* -------------- VECTORS  -------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+load_file("net_dd_vectors.hoc")
+
+// Define the distance-dependence vectors:
+g_level()
+
+/* -------------------------------------------------------------------------- */
+/* -------------- CELL MODELS  ---------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+load_file("net_dd_imodel.hoc")
+load_file("net_dd_emodel.hoc")
+
+/* Create the cells   ---------------------------------------------------- */ 
+
+for i = 0, nIN-1 { interneuron[i] = new Interneuron() }
+for j = 0, nPN-1 { principalneuron[j] = new Principalneuron() }
+
+proc set_indices() { local i
+  for i = 0, nIN-1 {
+  interneuron[i].indicing_IN(i)
+  }
+  for i = 0, nPN-1 {
+  principalneuron[i].indicing_PN(i)
+  }
+}
+set_indices()
+
+
+/* -------------------------------------------------------------------------- */
+/* -------------- ANALYSIS -------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+load_file("net_dd_ana.hoc")
+
+
+/* -------------------------------------------------------------------------- */
+/* -------------- NET BUILDING ---------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+load_file("net_dd_procs.hoc")
+
+
+/* -------------------------------------------------------------------------- */
+/* -------------- RUN CONTROL  ---------------------------------------------- */
+/* -------------------------------------------------------------------------- */ 
+
+proc initNet() { local i
+    if (plotting == 1) {
+       initr_Plt()
+       inithPlt()
+       initv_IN_Plt()
+       initv_PN_Plt()
+    }
+    
+    // Connections -------------------------------------------------------------
+	  if (recurrent == 1) {
+        disconnect_recurrent_net()
+    } else {
+        if (feedback == 1) { disconnect_net()		// disconnect cells
+        } else { disconnect_pureff_net() } 
+    }
+    disconnect_gaps()
+					 	
+	  if (recurrent == 1) {
+        connect_recurrent_net()
+    } else {	     
+        if (feedback == 1) { connect_net() 		// connect the network
+        } else { connect_pureff_net() }
+    }
+    connect_gaps()
+	
+	  // Synapses and Vrest ------------------------------------------------------ 
+    for i = 0,nIN-1 {  
+        interneuron[i].soma_interneuron.v = Vmin_interneuron+rduni.repick()*(Vmax_interneuron-Vmin_interneuron)
+        interneuron[i].switch_syn_II(0)
+		    interneuron[i].switch_syn_EI(0)
+	  	  interneuron[i].switch_gaps(0)
+    }
+    for i = 0,nPN-1 {
+        principalneuron[i].soma_principalneuron.v = Vmin_principalneuron+rduni.repick()*(Vmax_principalneuron-Vmin_principalneuron)
+	      principalneuron[i].switch_syn_IE(0)
+	      principalneuron[i].switch_syn_EE(0)
+    }
+    
+    // Constant excitatory drive -----------------------------------------------
+    initdrv_IN()
+    initdrv_PN()
+    
+    // Background synaptic drive -----------------------------------------------
+    initbgdrive()
+    
+    // Shaped input ------------------------------------------------------------
+    if (IN_input_format > 0) {
+        initINinput()
+    }
+    if (PN_input_format > 0) {
+        initPNinput()
+    }
+}
+
+
+proc advanceNet() { local i,vm
+    for i = 1,n_step { fadvance() } // make n_step integration steps
+	
+	  for i = 0,nIN-1 {	      // check if any cell fired and store spikes in AP_IN_times and AP_IN_cells 
+        vm = interneuron[i].soma_interneuron.v(0.5)
+		    Cellvar_IN.x[i] = vm
+	      if ((vm> -20) && (interneuron[i].old_v < -20)) {   
+			      AP_IN_times.x[AP_IN_count] = t               
+			      AP_IN_cells.x[AP_IN_count] = i              
+			      AP_IN_count += 1
+		    }
+        interneuron[i].old_v = vm
+        if (record_lfp == 1) {
+            lfp.x[i][int(t/t_step)] = get_moment_lfp(i)    
+        }
+	  }
+    for i = 0,nPN-1 {				// check if any cell fired and store spikes in AP_PN_times and AP_PN_cells
+        vm = principalneuron[i].soma_principalneuron.v(0.5)
+		    Cellvar_PN.x[i] = vm
+	      if ((vm> -20) && (principalneuron[i].old_v < -20)) {
+			      AP_PN_times.x[AP_PN_count] = t
+			      AP_PN_cells.x[AP_PN_count] = i
+			      AP_PN_count += 1
+		    }
+		    principalneuron[i].old_v = vm
+	  }
+	 
+	  if (export_traces == 1) {
+        write_gII(int(t/t_step))
+        write_gIE(int(t/t_step))
+        write_gEI(int(t/t_step))
+        write_vIN(int(t/t_step))
+        write_vPN(int(t/t_step))
+    }
+}
+
+proc runNet() {
+    finitialize()
+	  fcurrent()
+	  
+	  if (plotting == 1){
+        v_IN_plt.begin()
+        v_PN_plt.begin()
+	  }
+    
+    AP_IN_count = 0	
+	  AP_PN_count = 0				
+
+				// start and randomize
+	  while (t<tsyn) { advanceNet() } 
+
+				// switch in sysnapses	
+	  for i = 0,nIN-1 { 
+        interneuron[i].switch_syn_II(1)
+				interneuron[i].switch_syn_EI(1)
+ 	  }
+
+	  for i = 0,nPN-1 { 
+        principalneuron[i].switch_syn_IE(1)
+        principalneuron[i].switch_syn_EE(1)
+    }
+	 
+	  if (Gaps) { for i = 0,nIN-1 { interneuron[i].switch_gaps(GapR) } }
+
+				// run simulation with connections active
+	  while (t<tstop) { advanceNet()}		
+
+    doEvents()			// make sure to do it!  ;-)
+}
+
+
+/* ----------------------------------------------------------------------- */
+/*	 One sweep 								                                             */
+/* ----------------------------------------------------------------------- */
+
+startsw()		// start the stopwatch
+
+
+proc los() {		// one cycle of simulation/analysis
+
+   rtime = stopsw()
+   printf("\n%d:%d -- Starting simulation \n",rtime/60,rtime%60)
+   
+   printf("DD coefficients II-connections: a_ddg = %f and b_ddtau = %f\n", a_ddg_II, b_ddtau_II)
+   printf("SynG_II = %f (levelled to g = %f)\n",SynG_II,g_standard_II)
+   printf("Syn_II_decay at next neighbour: %f (levelled to %f)\n\n",Syn_II_decay_0,Syn_II_decay_standard)
+   
+   printf("DD coefficients IE-connections: a_ddg = %f and b_ddtau = %f\n", a_ddg_IE, b_ddtau_IE)
+   printf("SynG_IE = %f (levelled to g = %f)\n",SynG_IE,g_standard_IE)
+   printf("Syn_IE_decay at next neighbour: %f (levelled to %f)\n",Syn_IE_decay_0,Syn_IE_decay_standard)
+   
+   initNet()			// initialize network
+   
+   runNet()			// run simulation
+
+   if (plotting == 1) {
+      plotAPs()			// make an AP raster plot (time*cells)
+      plotHist()
+   }
+   
+   //saveHist()
+   save_raster()
+   
+   if (conmx == 1) { save_conmx() }
+   
+   if (export_traces == 1) {
+        save_gII(int(t/t_step))
+        save_gIE(int(t/t_step))
+        save_gEI(int(t/t_step))
+        save_vIN(int(t/t_step))
+        save_vPN(int(t/t_step))
+    }
+  
+   if (record_lfp == 1) {
+      save_lfp()
+   }
+  
+   printf("%d:%d -- End \n",rtime/60,rtime%60)
+}
+
+
+/* ----------------------------------------------------------------------- */
+/*	 Simulation     								                                       */
+/* ----------------------------------------------------------------------- */
+
+proc sim() {
+    startsw()				
+    los()				// do one cycle()
+}
+
+sim()
+quit()

@@ -1,0 +1,246 @@
+///////////////////////
+/* net_dd_imodel.hoc */
+///////////////////////
+
+objref interneuron[nIN]			// the "network" of interneurons (n = nIN)
+
+begintemplate Interneuron			// template of an interneuron
+
+//names of variables 
+public  soma_interneuron, old_v, drv_interneuron, syn_II, syn_EI, \
+			switch_syn_II, switch_syn_EI, set_syn, change_Imu_interneuron, \
+			pre_list_II, pre_list_EI, connect_pre_II, is_connected_II, disconnect_cell_II, \
+			connect_pre_EI, disconnect_cell_EI, index_IN, indicing_IN, connect_gap, \
+      disconnect_gaps, switch_gaps, currents, bgdrive, inj_input, injvec,\
+      signinput 
+      
+external n_d_interneuron,n_L_interneuron,n_seg_interneuron,\
+			 ARes_interneuron,MCap_interneuron,Rm_interneuron, Vrest_interneuron,\
+			 Syn_II_rise, SynE_II, max_ddcon_II, Syn_II_N, nIN,\
+			 Syn_EI_rise, Syn_EI_decay, SynE_EI, Ek_interneuron, shift_interneuron,\
+			 SynDel, SynADel, SynG_II, GapR, tauvec_II, temiinj_IN, iinj_time, inj_step,\
+			 Imu_interneuron, tstop, BGSyn_rise_IN, BGSyn_decay_IN, tINinj_on,\
+       IN_SIGNSyn_rise, IN_SIGNSyn_decay                                
+
+objref syn_II[50], syn_EI, pre_list_II, pre_list_EI,\
+	     drv_interneuron, net_c_interneuron, net_c_principalneuron, gaps[8],\
+	     bgsyn, bgdrive_list, inj_IN, injvec, signsyn, signinput_list
+	
+create soma_interneuron
+
+proc init() {
+   pre_list_II = new List()
+   pre_list_EI = new List()
+   bgdrive_list = new List()
+   signinput_list = new List()
+   
+   soma_interneuron { 
+		    //geometry
+		    diam = n_d_interneuron  L=n_L_interneuron nseg=n_seg_interneuron 
+		    f_surf = area(0.5)/100000      // area(0.5) = 100 um^2 (PI*diam^2)
+		
+		    //cable parameters
+		    Ra = ARes_interneuron cm=MCap_interneuron v=Vrest_interneuron 
+		    old_v = Vrest_interneuron
+		
+        //modified HH conductances
+        insert hh_net      // this determines the membrane mechanisms
+	 	           gl_hh_net = 1/Rm_interneuron		
+		           el_hh_net = Vrest_interneuron
+		           egk_hh_net = Ek_interneuron
+		           sh_hh_net = shift_interneuron
+		
+        // postsynaptic currents: IPSC 
+		    for i = 0,Syn_II_N-1 {
+            syn_II[i] = new Exp2Syn(0.5)
+            syn_II[i].tau1 = Syn_II_rise
+            syn_II[i].tau2 = tauvec_II.x[i*(max_ddcon_II/Syn_II_N)]
+            syn_II[i].e = SynE_II
+        }
+
+        // postsynaptic currents: EPSC
+		    syn_EI = new Exp2Syn(0.5)		
+		
+		    syn_EI.tau1 = Syn_EI_rise
+		    syn_EI.tau2 = Syn_EI_decay
+		    syn_EI.e = SynE_EI
+		    
+		    // excitatory synapses for background drive
+        bgsyn = new Exp2Syn(0.5)
+        bgsyn.tau1 = BGSyn_rise_IN
+        bgsyn.tau2 = BGSyn_decay_IN
+        bgsyn.e = 0
+        
+        // excitatory synapses for synaptic input signal
+        signsyn = new Exp2Syn(0.5)
+        signsyn.tau1 = IN_SIGNSyn_rise
+        signsyn.tau2 = IN_SIGNSyn_decay
+        signsyn.e = 0
+
+		    // IClamps - a) for constant drive
+		    drv_interneuron = new IClamp(0.5)
+
+		    drv_interneuron.del = 0
+		    drv_interneuron.dur = tstop
+		    drv_interneuron.amp = Imu_interneuron*f_surf	// nA
+		    // excitatory curent injection -  the density param. 'Imu' [uA/cm^2]  should be converted 
+		    // to the injected current 'amp' [nA] using the factor 'fsurf' derived from the 
+		    // surface area [um^2] and the conversion of the units
+		    
+		    // IClamps - b) for shaped input
+		    inj_IN = new IClamp(0.5)
+
+		    inj_IN.del = 0
+		    inj_IN.dur = tstop
+		    
+		    // Gaps
+		    for i=0,7 { 		// connect to 8 neighbours L and R 4
+		        gaps[i] = new gap(0.5) 
+		        gaps[i].r = GapR 
+		        setpointer gaps[i].vgap,v(0.5)
+		    }
+		    n_gaps=0 
+   }
+}   
+
+proc indicing_IN() {
+  index_IN = $1
+}
+
+// ****GAPs****
+proc connect_gap() {
+// $o1 arg is the other Cell
+    setpointer gaps[n_gaps].vgap, $o1.soma_interneuron.v(0.5)
+    n_gaps +=1
+}
+
+proc disconnect_gaps() {
+    for i=0,7 { 
+	setpointer gaps[i].vgap, soma_interneuron.v(0.5)
+    } 	
+    n_gaps=0
+}
+
+proc switch_gaps() {local i,r
+  if ($1==0) {r=1000000000} else {r=$1}
+	for i=0,7 {gaps[i].r = r }
+}	
+
+// ****IPSCs****
+proc connect_pre_II() {local f, axdel, strength
+// $o1 arg is the **PRESynaptic** Cell, $2 is the distance between the cells, $3 gsyn, $4 distance for the tau-Vector
+   axdel=$2*SynADel       // in ms distance between cells 50 um
+                       	  // AP propagation  .25 m/s => 0.2 ms for one interval
+   strength = $3*f_surf	  // synaptic strength calculate using the surface factor
+   synno = int(($4*Syn_II_N)/(max_ddcon_II+1))   			   
+
+   $o1.soma_interneuron pre_list_II.append( new NetCon(&v(1),syn_II[synno],-20,SynDel+axdel,strength))
+
+	// list.append() adds new items to the list
+	// NetCon: (presynaptic variable, target, thresh, delay, weight)
+	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 uS peak 
+	// conversion: 'SynG' [mS/cm^2] to 'weight' [uS] using the factor 'fsurf' derived from the 
+	// surface area [um^2] and the conversion of the units
+	
+	// connect_pre_II() is executed on top of the postsynaptic cell-object (object.connect_pre_II()).                      
+	// Every cell in the network has an own pre_list for every type of connections that 
+  // is made on it. These lists contain all the NetCon-objects of this synapse type 
+  // which have the respective cell as a target cell. In the brackets the first argument 
+  // gives the presynaptic cell of which the soma is used as the source of the 
+	// NetCon-object 
+}
+
+proc disconnect_cell_II() {
+   pre_list_II.remove_all()
+}
+
+func is_connected_II() {local i,c			// check if connected
+   c = 0
+   for i = 0,pre_list_II.count()-1 {
+		net_c_interneuron = pre_list_II.object(i)		// get netCon object from list
+		if ($o1 == net_c_interneuron.precell()) {c=1}
+   }
+   return c
+}   
+
+proc switch_syn_II() {local i			// check if connected
+   for i = 0,Syn_II_N-1 {
+      syn_II[i].tau1 = Syn_II_rise			// to make sure changes in syn params 
+      syn_II[i].tau2 = tauvec_II.x[i*(max_ddcon_II/Syn_II_N)]
+      syn_II[i].e = SynE_II
+   }
+   
+   for i = 0,pre_list_II.count()-1 {
+	    net_c_interneuron = pre_list_II.object(i)		// get netCon object from list
+	    net_c_interneuron.active($1)
+	 }
+}
+
+// ****EPSCs****
+proc connect_pre_EI() {local f, axdel, strength
+// $o1 arg is the **PRSynEaptic** Cell, $2 is the distance between the cells, $3 gsyn
+
+   axdel=$2*SynADel        // in ms distance between cells 50 um
+                       	  // AP propagation  .25 m/s => 0.2 ms for one interval
+   strength = $3*f_surf	  // synaptic strength calculate using the surface factor			   
+
+   $o1.soma_principalneuron pre_list_EI.append( new NetCon(&v(1),syn_EI,0,SynDel+axdel,strength))
+
+   	
+	// list.append() adds new items to the list
+	// NetCon: (presynaptic variable, target, thresh, delay, weight)
+	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 uS peak 
+	// conversion: 'SynG' [mS/cm^2] to 'weight' [uS] using the factor 'fsurf' derived from the 
+	// surface area [um^2] and the conversion of the units
+}
+
+proc disconnect_cell_EI() {
+   pre_list_EI.remove_all()   
+}
+
+proc switch_syn_EI() {local i			// check if connected
+   syn_EI.tau1 = Syn_EI_rise			// to make sure changes in syn params 
+                            			// take place in the network
+   syn_EI.tau2 = Syn_EI_decay
+    
+   syn_EI.e = SynE_EI
+   
+    for i = 0,pre_list_EI.count()-1 {
+		net_c_principalneuron = pre_list_EI.object(i)		// get netCon object from list
+		net_c_principalneuron.active($1)
+		}
+}
+
+// ****Constant excitatory drive****
+proc change_Imu_interneuron() {
+  if (numarg()<1) {
+	 drv_interneuron.amp = Imu_interneuron*f_surf
+	} else {
+	 drv_interneuron.amp = $1*f_surf
+	}
+}
+
+// ****Background synaptic drive****
+proc bgdrive() {
+    strength = $2*f_surf
+    bgdrive_list.append( new NetCon($o1,bgsyn,10,0,strength) )    
+}
+
+// ****Shaped input****
+proc inj_input() {
+  injvec = new Vector(tstop/inj_step)
+  // $1 is the multiplicative factor that depends on the spatial position of the cell in the net!
+  injvec = temiinj_IN.c.mul(f_surf*$1)
+  // $2 is a variability factor determined by spainput_on_sd
+  for i = tINinj_on/inj_step,$2/inj_step {
+      injvec.x[i-1] = 0
+  }
+  injvec.play(&inj_IN.amp,iinj_time,1)
+}
+
+proc signinput() {
+    strength = $2*f_surf
+    signinput_list.append( new NetCon($o1,signsyn,10,0,strength) )    
+}
+
+endtemplate Interneuron

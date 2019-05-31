@@ -1,0 +1,493 @@
+//////////////////////
+/* net_dd_procs.hoc */
+//////////////////////
+
+/* -------------------------------------------------------------------------- */
+/* -------------- NET BUILDING ---------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+
+// __________________________
+// Synapses - 1st Level
+
+// a) ii
+proc connect_random_II() {local i,j,pre,c,s,ct,tau // connect cells in a random fashion with the distribution given in lt_II
+    c = 0
+    if (conmx == 1) {       // Record the connectivity matrix: rows: presynaptic cells, columns: postsynaptic cells
+        conmx_II = new Matrix(nIN,nIN)
+        conmx_II.zero()
+    }
+    for i = 0, nIN - 1 {		
+        c=0 st=0
+	      for j = -max_ddcon_II,max_ddcon_II {
+          //if (abs(j) > 0) {   // Make sure there are no autapses.	
+            if (rduni.repick() <= lt_II.x[abs(j)]) {
+			          pre=i+j
+			   
+			          while (pre<0) { pre=nIN+pre }
+			          while (pre>=nIN) { pre=pre-nIN }
+			   
+			          rnd1 = abs(rdnormII.repick())
+			          while (rnd1 > max_ddcon_II) { rnd1 = abs(rdnormII.repick()) }
+			          rnd1 = int(rnd1)
+			          
+			          rnd2 = abs(rdnormII.repick())
+			          while (rnd2 > max_ddcon_II) { rnd2 = abs(rdnormII.repick()) }
+			          rnd2 = int(rnd2)
+			           
+                if (shuffled_II > 0) { 
+		                s = SynG_II * negexp_II.x[abs(rnd1) - 1]
+		                if (shuffled_II > 1) {
+                        tau = abs(rnd2)
+                    } else {
+                        tau = abs(rnd1)
+                    }
+		            } else {
+	                  s = SynG_II * negexp_II.x[abs(j) - 1]
+	                  tau = abs(j)
+                    if (a_ddg_II == 0) {
+                        s = rdnorm.repick()*SynGcv_II*s+s
+                    } 
+                    // The negexp_II-Vector assigns the value "1" to the 0th element which 
+                    // coincides with the presynaptic IN. In order to assign the "1" to 
+                    // the closest neighbouring IN, I have to subtract "1" from the index
+                    // of the negexp_II-Vector.
+		            if (s<0) { s=0 }
+	              }
+                
+                if (conmx == 1) { conmx_II.x[pre][i] = ind_gcomp(s,Syn_II_rise,tau) }
+                
+                interneuron[i].connect_pre_II(interneuron[pre],abs(j),s,tau) 
+	              c += 1
+	              st += s
+	              }
+       } 
+    }
+    printf("ii connections random pattern.\n") 
+}
+
+// b) ie
+proc connect_random_IE() {local i,j,pre,c,s,ct,r // connect cells in a random fashion with the distribution given in lt_IE
+    c = 0
+    if (conmx == 1) {       // Record the connectivity matrix: rows: presynaptic cells, columns: postsynaptic cells
+        conmx_IE = new Matrix(nIN,nPN)
+        conmx_IE.zero()
+    }
+    for i = 0, nPN - 1 {		
+        c=0 st=0
+	      for j = -max_ddcon_IE,max_ddcon_IE { 	
+            if (rduni.repick() <=lt_IE.x[abs(j)]) {  
+			          pre=int(i*nIN/nPN)+j
+			   
+			          while (pre<0) { pre=nIN+pre }
+			          while (pre>=nIN) { pre=pre-nIN }
+			   
+			          rnd1 = abs(rdnormIE.repick())
+			          while (rnd1 > max_ddcon_II) { rnd1 = abs(rdnormIE.repick()) }
+			          rnd1 = int(rnd1)
+			          
+			          rnd2 = abs(rdnormIE.repick())
+			          while (rnd2 > max_ddcon_II) { rnd2 = abs(rdnormIE.repick()) }
+			          rnd2 = int(rnd2)
+			   
+                if (shuffled_IE > 0) { 
+		                s = SynG_IE * negexp_IE.x[abs(rnd1) - 1]
+		                if (shuffled_IE > 1) {
+                        tau = abs(rnd2)
+                    } else {
+                        tau = abs(rnd1)
+                    }
+		            } else {
+	                  s = SynG_IE * negexp_IE.x[abs(j) - 1]
+	                  tau = abs(j)
+                    if (a_ddg_IE == 0) {
+                        s = rdnorm.repick()*SynGcv_IE*s+s
+                    } 
+                    // The negexp_II-Vector assigns the value "1" to the 0th element which 
+                    // coincides with the presynaptic IN. In order to assign the "1" to 
+                    // the closest neighbouring IN, I have to subtract "1" from the index
+                    // of the negexp_II-Vector.
+		            if (s<0) { s=0 }
+	              }
+                
+                if (conmx == 1) { conmx_IE.x[pre][i] = ind_gcomp(s,Syn_IE_rise,tau) }
+                
+                principalneuron[i].connect_pre_IE(interneuron[pre],abs(j),s,tau) 
+	              c += 1
+	              st += s
+	           }
+         }
+    }
+    printf("ie connections random pattern.\n") 
+}
+
+// c) ei
+proc connect_random_EI() {local i,j,pre,c,s,ct // connect cells in a random and non-distance-dependent fashion
+    c = 0
+    if (conmx == 1) {       // Record the connectivity matrix: rows: presynaptic cells, columns: postsynaptic cells
+        conmx_EI = new Matrix(nPN,nIN)
+        conmx_EI.zero()
+    }
+    for i = 0, nIN - 1 {		
+        c=0 st=0
+	      for j = -max_ddcon_EI,max_ddcon_EI { 	
+            if (rduni.repick() <= lt_EI.x[abs(j)]) {
+			          pre=(i*nPN/nIN)+j
+			   
+			          while (pre<0)  { pre=nPN+pre }
+			          while (pre>=nPN) { pre=pre-nPN }
+			   
+                if (SynGcv_EI == 0) { 
+		                s = SynG_EI
+	              } else { 
+		                s = rdnorm.repick()*SynGcv_EI*SynG_EI+SynG_EI
+		                if (s<0) { s=0 }
+	              }
+	             
+	              if (conmx == 1) { conmx_EI.x[pre][i] = ind_gcomp(s,Syn_EI_rise,tau) }
+	              
+	              interneuron[i].connect_pre_EI(principalneuron[pre],abs(j),s) 
+	              c += 1
+	              st += s
+	           }
+         }
+    }
+    printf("ei connections random pattern.\n") 
+}
+
+// d) ee
+proc connect_random_EE() {local i,j,pre,c,s,ct // connect cells in a random and non-distance-dependent fashion
+    c = 0
+    if (conmx == 1) {       // Record the connectivity matrix: rows: presynaptic cells, columns: postsynaptic cells
+        conmx_EE = new Matrix(nPN,nPN)
+        conmx_EE.zero()
+    }
+    for i = 0, nPN - 1 {		
+        c=0 st=0
+	      for j = -max_ddcon_EE,max_ddcon_EE { 	
+            if (rduni.repick() <= lt_EE.x[abs(j)]) {
+			          pre=i+j
+			   
+			          while (pre<0)  { pre=nPN+pre }
+			          while (pre>=nPN) { pre=pre-nPN }
+			   
+                if (SynGcv_EE == 0) { 
+		                s = SynG_EE
+	              } else { 
+		                s = rdnorm.repick()*SynGcv_EE*SynG_EE+SynG_EE
+		                if (s<0) { s=0 }
+	              }
+	             
+	              if (conmx == 1) { conmx_EE.x[pre][i] = ind_gcomp(s,Syn_EE_rise,tau) }
+	             
+	              principalneuron[i].connect_pre_EE(principalneuron[pre],abs(j),s) 
+	              c += 1
+	              st += s
+	           }
+         }
+    }
+    printf("ee connections random pattern.\n") 
+}
+
+// _____________________________________________________________________________
+//
+
+// __________________________
+// Synapses - 2nd Level
+
+proc disconnect_net_II() {local i
+    for i = 0,nIN-1 { interneuron[i].disconnect_cell_II() }
+    msyn=0
+}
+
+proc disconnect_net_IE() {local i
+    for i = 0,nPN-1 { principalneuron[i].disconnect_cell_IE() } 
+    msyn=0
+}
+
+proc disconnect_net_EI() {local i
+    for i = 0,nIN-1 { interneuron[i].disconnect_cell_EI() }
+    msyn=0
+}
+
+proc disconnect_net_EE() {local i
+    for i = 0,nPN-1 { principalneuron[i].disconnect_cell_EE() }
+    msyn=0
+}
+
+proc connect_net() {
+    connect_random_II()
+	  connect_random_IE()
+	  connect_random_EI()
+}
+
+proc disconnect_net() {
+	  disconnect_net_II()
+	  disconnect_net_IE()
+	  disconnect_net_EI()
+}
+
+proc connect_pureff_net() {
+    connect_random_II()
+	  connect_random_IE()
+}
+
+proc disconnect_pureff_net() {
+    disconnect_net_II()
+	  disconnect_net_IE()
+}
+
+proc connect_recurrent_net() {
+    connect_random_II()
+	  connect_random_IE()
+	  connect_random_EI()
+	  connect_random_EE()
+}
+
+proc disconnect_recurrent_net() {
+    disconnect_net_II()
+	  disconnect_net_IE()
+	  disconnect_net_EI()
+	  disconnect_net_EE()
+}
+
+// _____________________________________________________________________________
+//
+
+// __________________________
+// Gaps
+
+proc connect_gaps() {local i,j,n,pre
+    n = 0
+    for i=0,nIN-1 {
+        for j=1,4 {
+            pre=i+j
+            if (pre>=nIN) { pre-=nIN } 
+            if (rdg.repick()) {             
+	              interneuron[i].connect_gap(interneuron[pre]) 
+	              interneuron[pre].connect_gap(interneuron[i])
+	              n += 1
+            }   
+        }
+    }
+    gaps=2*n/nIN
+    printf("Gaps inserted: %d \n",n)
+}
+
+proc disconnect_gaps() {local i
+    for i = 0,nIN-1  { interneuron[i].disconnect_gaps() }
+    gaps=0
+}
+
+// _____________________________________________________________________________
+//
+
+
+// __________________________________________
+// Initiate constant excitatory drive
+
+proc initdrv_IN() {
+    for i = 0,nIN-1 {
+        if (tdrv2 == 0) {						
+			      interneuron[i].drv_interneuron.del = 0
+		    } else {  // randomize onset of exc.drv
+			      interneuron[i].drv_interneuron.del = tdrv1 + rduni.repick()*(tdrv2-tdrv1) 
+		    }
+	      if (Icv_interneuron == 0) {							// random Iexc if Icv != 0 
+			      Cellvar_IN.x[i] = Imu_interneuron
+		    } else {
+			      Cellvar_IN.x[i] = rdnorm.repick()*Icv_interneuron*Imu_interneuron+Imu_interneuron 
+		    }                          
+		    interneuron[i].change_Imu_interneuron(Cellvar_IN.x[i])
+		}
+}
+
+proc initdrv_PN() {
+    for i = 0,nPN-1 {
+        if (tdrv2 == 0) {						
+			      principalneuron[i].drv_principalneuron.del = 0
+		    } else {  // randomize onset of exc.drv
+			      principalneuron[i].drv_principalneuron.del = tdrv1 + rduni.repick()*(tdrv2-tdrv1) 
+		    }
+	      if (Icv_principalneuron == 0) {							// random Iexc if Icv != 0 
+			      Cellvar_PN.x[i] = Imu_principalneuron
+		    } else {
+			      Cellvar_PN.x[i] = rdnorm.repick()*Icv_principalneuron*Imu_principalneuron+Imu_principalneuron 
+		    }
+		    principalneuron[i].change_Imu_principalneuron(Cellvar_PN.x[i])
+	  }
+}
+
+// _____________________________________________________________________________
+//
+
+// __________________________________________
+// Initiate background synaptic drive
+
+objref bgstim_IN[N_BGStim_IN], bgstim_PN[N_BGStim_PN]
+
+proc initbgdrive() {
+    // Interneurons ------------------------------------------------------------
+    for i = 0,(N_BGStim_IN-1) {
+        bgstim_IN[i] = new NetStim(0.5)
+        bgstim_IN[i].interval = 1000/BGStim_f_IN
+        bgstim_IN[i].number = BGStim_N_IN
+        bgstim_IN[i].noise = BGStim_noise_IN
+        bgstim_IN[i].start = tdrv1 + rduni.repick()*(tdrv2-tdrv1)
+    }
+  
+    for j = 0,(nIN-1) {
+        for k = 0,BGCon_N_IN-1 {
+            if (BGCon_dd_IN > 0) {
+                // a) Distance-dependent
+                dist = int(rdnorm.repick*BGCon_SD_IN)
+                while (dist>N_BGStim_IN/2) { dist = int(rdnorm.repick*BGCon_SD_IN) }
+        
+                groupsize = nIN/N_BGStim_IN        
+                central_NetStim = int(j/groupsize)
+        
+                input = central_NetStim + dist
+                while (input>=N_BGStim_IN) { input = input-N_BGStim_IN }
+                while (input<0) { input = N_BGStim_IN+input }
+            } else {
+                // b) random: spatially uncorrelated input
+                //input = int(rduni.repick()*N_BGStim_IN)
+                input = j
+            }
+          
+            s = rdnorm.repick()*BGSyn_strength_cv_IN*BGSyn_strength_IN+BGSyn_strength_IN
+      
+            interneuron[j].bgdrive(bgstim_IN[input],s)
+        }
+    }
+  
+    // Principal neurons ------------------------------------------------------------
+    for i = 0,(N_BGStim_PN-1) {
+        bgstim_PN[i] = new NetStim(0.5)
+        bgstim_PN[i].interval = 1000/BGStim_f_PN
+        bgstim_PN[i].number = BGStim_N_PN
+        bgstim_PN[i].noise = BGStim_noise_PN
+        bgstim_PN[i].start = tdrv1 + rduni.repick()*(tdrv2-tdrv1)
+    }
+  
+    for j = 0,(nPN-1) {
+        for k = 0,BGCon_N_PN-1 {
+            if (BGCon_dd_PN > 0) {
+                // a) Distance-dependent
+                dist = int(rdnorm.repick*BGCon_SD_PN)
+                while (dist>N_BGStim_PN/2) { dist = int(rdnorm.repick*BGCon_SD_PN) }
+        
+                groupsize = nPN/N_BGStim_PN        
+                central_NetStim = int(j/groupsize)
+        
+                input = central_NetStim + dist
+                while (input>=N_BGStim_PN) { input = input-N_BGStim_PN }
+                while (input<0) { input = N_BGStim_PN+input }
+            } else {
+                // b) random: spatially uncorrelated input
+                //input = int(rduni.repick()*N_BGStim_PN)
+                input = j
+            }
+          
+            s = rdnorm.repick()*BGSyn_strength_cv_PN*BGSyn_strength_PN+BGSyn_strength_PN
+      
+            principalneuron[j].bgdrive(bgstim_PN[input],s)
+        }
+    }
+}
+
+// _____________________________________________________________________________
+//
+
+// __________________________________________
+// Initiate shaped input
+
+proc init_INinj_input() { local i,c
+    temshape_INinput()
+    spashape_INinput()
+    for i = 0,nIN-1 {
+        // introduce some variability in the onset of the input injection:
+        z = int(rduni.repick()*tvarINinj)+tINinj_on
+        interneuron[i].inj_input(spaiinj_IN.x[i],z)  
+    }
+    if (spaiinj_IN.max() > 1) { printf("Interneuron input vector exceeds 1. Maximal value: %f\n",spaiinj_IN.max()) }
+}
+
+proc init_PNinj_input() { local i,c
+    temshape_PNinput()
+    spashape_PNinput()
+    for i = 0,nPN-1 {
+        // introduce some variability in the onset of the input injection:
+        z = int(rduni.repick()*tvarPNinj)+tPNinj_on
+        principalneuron[i].inj_input(spaiinj_PN.x[i],z)  
+    }
+    if (spaiinj_PN.max() > 1) { printf("Principalneuron input vector exceeds 1. Maximal value: %f\n",spaiinj_PN.max()) }
+}
+
+
+objref IN_signstim[IN_N_SIGNStim]
+
+proc init_INsyn_input() { local i,half,j,k,input
+    spashape_INinput()
+    for i = 0,(IN_N_SIGNStim-1) {
+        IN_signstim[i] = new NetStim(0.5)
+        IN_signstim[i].interval = 1000/(IN_SIGNStim_f*spaiinj_IN.x[i])
+        IN_signstim[i].number = IN_SIGNStim_N*spaiinj_IN.x[i]
+        IN_signstim[i].noise = IN_SIGNStim_noise
+        IN_signstim[i].start = tINinj_on + rduni.repick()*tvarINinj
+    }
+
+    half = (IN_SIGNCon_N-1)/2    
+    for j = 0,(nIN-1) {
+        for k = 0,IN_SIGNCon_N-1 {
+            dist = k-half // Distance between the cell and the Stimulator. 
+            input = int(j+dist)
+            s = IN_SIGNSyn_strength
+      
+            interneuron[j].signinput(IN_signstim[input],s)
+        }
+    }
+}
+
+objref PN_signstim[PN_N_SIGNStim]
+
+proc init_PNsyn_input() { local i,half,j,k,input
+    spashape_PNinput()
+    for i = 0,(PN_N_SIGNStim-1) {
+        PN_signstim[i] = new NetStim(0.5)
+        PN_signstim[i].interval = 1000/(PN_SIGNStim_f*spaiinj_PN.x[i])
+        PN_signstim[i].number = PN_SIGNStim_N*spaiinj_PN.x[i]
+        PN_signstim[i].noise = PN_SIGNStim_noise
+        PN_signstim[i].start = tPNinj_on + rduni.repick()*tvarPNinj
+    }
+
+    half = (PN_SIGNCon_N-1)/2    
+    for j = 0,(nPN-1) {
+        for k = 0,PN_SIGNCon_N-1 {
+            dist = k-half // Distance between the cell and the Stimulator. 
+            input = int(j+dist)
+            s = PN_SIGNSyn_strength
+      
+            principalneuron[j].signinput(PN_signstim[input],s)
+        }
+    }
+}
+
+
+proc initINinput() {
+    if (IN_input_format < 2) {
+        init_INinj_input()
+    } else {
+        init_INsyn_input()
+    } 
+}
+
+proc initPNinput() {
+    if (PN_input_format < 2) {
+        init_PNinj_input()
+    } else {
+        init_PNsyn_input()
+    } 
+}
+
+// _____________________________________________________________________________
+//

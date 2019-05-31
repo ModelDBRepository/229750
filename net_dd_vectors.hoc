@@ -1,0 +1,389 @@
+////////////////////////
+/* net_dd_vectors.hoc */
+////////////////////////
+
+objref lt_II, lt_IE, lt_EI, lt_EE, negexp_II, negexp_IE, tauvec_II, tauvec_IE, weight, tausum
+weight = new Vector(nIN/2)
+tausum = new Vector(nIN/2)
+
+// ______________________________
+// Auxiliary vectors for Synapses
+
+// ------ II connections ------------------------------------------------------- 
+
+// 1. Distance dependence in the network connectivity
+lt_II = new Vector(nIN+1)     // Storing the connection probability in dependence
+
+lt_II_scale = Msyn_II / erf (max_ddcon_II / (sd_ddcon_II * sqrt(2))) 
+          // scaling factor for the gaussian distribution of the connectivity rates
+          // to achieve the correct connectivity rates Msyn_II ultimately.
+for i=0,max_ddcon_II { lt_II.x[i]=(lt_II_scale/(sqrt(2*PI)*sd_ddcon_II)) * exp(-(i*i)/(2*sd_ddcon_II*sd_ddcon_II)) } 
+          // gaussian distribution of conn. prob. centered around the cell with sd_ddcon_IE, 
+					// maximal distance of max_ddcon_II. The vector is automatically adjusted to a new Msyn_II value.
+					// !!! Attention!!! If Msyn_II becomes too high, then the the scaling factor lt_II_scale becomes too 
+					// large and the connection probability for close presynaptic cells is larger than 1
+					// --> will result in a lower connectivity than wanted! To compensate for this either max_ddcon_II can  
+					// be enlarged or ddcon_II_sd! 
+					
+// 2. Distance dependence in the synaptic conductances
+negexp_II = new Vector(nIN/2)         // Storing a multiplicative factor for the synaptic strengths over distance. 
+
+for i=0,((nIN/2)-1) {                                                 
+  z = exp(-(a_ddg_II*SynADel)*i)      
+  
+  if (z >= ddg_II_low) {
+    negexp_II.x[i] = z
+  } else {
+    negexp_II.x[i] = ddg_II_low
+  }
+}
+
+// 3. Distance dependence in the decay time constants
+func tau_II_average() {
+    // $1 is the Syn_II_decay_0 of interest
+    weight.fill(0)
+    tausum.fill(0)
+    for i = 0,max_ddcon_II-1 {
+        weight.x[i] = negexp_II.x[i]*lt_II.x[i]
+    }
+    weight = weight.div(weight.sum())
+    
+    for i = 0,max_ddcon_II-1 {
+        syn_ID = int((i*Syn_II_N)/max_ddcon_II)
+        z = $1 + (syn_ID*b_ddtau_II*SynADel*(max_ddcon_II/Syn_II_N))
+        if (z <= Syn_II_decay_top) {
+            tausum.x[i] = z
+        } else {
+            tausum.x[i] = Syn_II_decay_top
+        }
+    }
+    tausum = tausum.mul(weight)
+    
+    return tausum.sum()
+}
+
+proc tau_II_level() {
+    tau1 = tau_II_average(1)
+    tau2 = tau_II_average(2)
+    Syn_II_decay_0 = 2 - (((2-1)*(tau2-Syn_II_decay_standard))/(tau2-tau1))
+    if (Syn_II_decay_0 < Syn_II_decay_bottom) {
+        printf("Warning: Syn_II_decay could not be levelled! Instead of %f, Syn_II_decay_0 will be set to the default value %f\n",Syn_II_decay_0,Syn_II_decay_bottom)
+        Syn_II_decay_0 = Syn_II_decay_bottom
+    }
+}
+
+tau_II_level()
+
+tauvec_II = new Vector(nIN/2)      // Storing a certain ratio between fast and slow component of the inhibitory synapse. 
+tauvec_II.fill(Syn_II_decay_top)
+
+for i=0,max_ddcon_II-1 {
+    syn_ID = int((i*Syn_II_N)/max_ddcon_II)
+    z = Syn_II_decay_0 + (b_ddtau_II*SynADel*(max_ddcon_II/Syn_II_N)*syn_ID)
+  
+    if (z <= Syn_II_decay_top) {
+      tauvec_II.x[i] = z
+    } else {
+      tauvec_II.x[i] = Syn_II_decay_top
+    }
+}
+
+
+// ------ IE connections ------------------------------------------------------- 
+
+// 1. Distance dependence in the network connectivity
+lt_IE = new Vector(nIN+1)     // Storing the connection probability in dependence
+
+lt_IE_scale = Msyn_IE / erf (max_ddcon_IE / (sd_ddcon_IE * sqrt(2))) 
+for i=0,max_ddcon_IE { lt_IE.x[i]=(lt_IE_scale/(sqrt(2*PI)*sd_ddcon_IE)) * exp(-(i*i)/(2*sd_ddcon_IE*sd_ddcon_IE)) } 
+					
+// 2. Distance dependence in the synaptic conductances
+negexp_IE = new Vector(nIN/2)         // Storing a multiplicative factor for the synaptic strengths over distance. 
+
+for i=0,((nIN/2)-1) {                                                 
+  z = exp(-(a_ddg_IE*SynADel)*i)      
+  
+  if (z >= ddg_IE_low) {
+    negexp_IE.x[i] = z
+  } else {
+    negexp_IE.x[i] = ddg_IE_low
+  }
+}
+
+// 3. Distance dependence in the decay time constants
+func tau_IE_average() {
+    // $1 is the Syn_IE_decay_0 of interest
+    weight.fill(0)
+    tausum.fill(0)
+    for i = 0,max_ddcon_IE-1 {
+        weight.x[i] = negexp_IE.x[i]*lt_IE.x[i]
+    }
+    weight = weight.div(weight.sum())
+    
+    for i = 0,max_ddcon_IE-1 {
+        syn_ID = int((i*Syn_IE_N)/max_ddcon_IE)
+        z = $1 + (syn_ID*b_ddtau_IE*SynADel*(max_ddcon_IE/Syn_IE_N))
+        if (z <= Syn_IE_decay_top) {
+            tausum.x[i] = z
+        } else {
+            tausum.x[i] = Syn_IE_decay_top
+        }
+    }
+    tausum = tausum.mul(weight)
+    
+    return tausum.sum()
+}
+
+proc tau_IE_level() {
+    tau1 = tau_IE_average(1)
+    tau2 = tau_IE_average(2)
+    Syn_IE_decay_0 = 2 - (((2-1)*(tau2-Syn_IE_decay_standard))/(tau2-tau1))
+    if (Syn_IE_decay_0 < Syn_IE_decay_bottom) {
+        printf("Warning: Syn_IE_decay could not be levelled! Instead of %f, Syn_IE_decay_0 will be set to the default value %f\n",Syn_IE_decay_0,Syn_IE_decay_bottom)
+        Syn_IE_decay_0 = Syn_IE_decay_bottom
+    }
+}
+
+tau_IE_level()
+
+tauvec_IE = new Vector(nIN/2)      // Storing a certain ratio between fast and slow component of the inhibitory synapse. 
+tauvec_IE.fill(Syn_IE_decay_top)
+
+for i=0,max_ddcon_IE-1 {
+    syn_ID = int((i*Syn_IE_N)/max_ddcon_IE)
+    z = Syn_IE_decay_0 + (b_ddtau_IE*SynADel*(max_ddcon_IE/Syn_IE_N)*syn_ID)
+  
+    if (z <= Syn_IE_decay_top) {
+      tauvec_IE.x[i] = z
+    } else {
+      tauvec_IE.x[i] = Syn_IE_decay_top
+    }
+}
+
+// ------ EI connections -------------------------------------------------------
+lt_EI = new Vector(nPN+1)
+lt_EI_scale = Msyn_EI / erf (max_ddcon_EI / (sd_ddcon_EI * sqrt(2))) 
+for i=0,max_ddcon_EI { lt_EI.x[i]=(lt_EI_scale/(sqrt(2*PI)*sd_ddcon_EI)) * exp(-(i*i)/(2*sd_ddcon_EI*sd_ddcon_EI)) } 
+
+
+// ------ EE connections -------------------------------------------------------
+lt_EE = new Vector(nPN+1)
+lt_EE_scale = Msyn_EE / erf (max_ddcon_EE / (sd_ddcon_EE * sqrt(2))) 
+for i=0,max_ddcon_EE { lt_EE.x[i]=(lt_EE_scale/(sqrt(2*PI)*sd_ddcon_EE)) * exp(-(i*i)/(2*sd_ddcon_EE*sd_ddcon_EE)) } 
+
+
+
+// _____________________________________________________________________________
+//
+
+
+// _____________________________________________________________________________
+// Calculation of the maximal conductance for the different DD modes based on 
+// the compound conductance of the noDD mode!
+
+
+func compound_conductance_II() { local compcond,i,j,g,x
+    // $1 considering DD-vectors (1) or not for noDD-standard (0) 
+    // $2 gmax
+    compcond = 0
+    if ($1 == 0) {
+        for i = 0,max_ddcon_II-1 {
+            g = $2
+            x = lt_II.x[i]
+        
+            ind_compcond = 0
+            for j = 0,(100/dt)-1 {
+                ind_compcond = ind_compcond+(g*(exp(-(j*dt)/Syn_II_decay_standard)-exp(-(j*dt)/Syn_II_rise)))
+            }
+            compcond = compcond + (x*ind_compcond)
+        }
+    } else {
+        for i = 0,max_ddcon_II-1 {
+            g = $2*negexp_II.x[i]
+            x = lt_II.x[i]
+        
+            ind_compcond = 0
+            for j = 0,(100/dt)-1 {
+                ind_compcond = ind_compcond+(g*(exp(-(j*dt)/tauvec_II.x[i])-exp(-(j*dt)/Syn_II_rise)))
+            }
+            compcond = compcond + (x*ind_compcond)
+        }
+    }
+    return compcond
+}
+
+func compound_conductance_IE() { local compcond,i,j,g,x
+    // $1 considering DD-vectors (1) or not for noDD-standard (0) 
+    // $2 gmax
+    compcond = 0
+    if ($1 == 0) {
+        for i = 0,max_ddcon_IE-1 {
+            g = $2
+            x = lt_IE.x[i]
+        
+            ind_compcond = 0
+            for j = 0,(100/dt)-1 {
+                ind_compcond = ind_compcond+(g*(exp(-(j*dt)/Syn_IE_decay_standard)-exp(-(j*dt)/Syn_IE_rise)))
+            }
+            compcond = compcond + (x*ind_compcond)
+        }
+    } else {
+        for i = 0,max_ddcon_IE-1 {
+            g = $2*negexp_IE.x[i]
+            x = lt_IE.x[i]
+        
+            ind_compcond = 0
+            for j = 0,(100/dt)-1 {
+                ind_compcond = ind_compcond+(g*(exp(-(j*dt)/tauvec_IE.x[i])-exp(-(j*dt)/Syn_IE_rise)))
+            }
+            compcond = compcond + (x*ind_compcond)
+        }
+    }
+    return compcond
+}
+
+proc g_level() {
+    g_std = compound_conductance_II(0,g_standard_II)
+    g_lin1 = compound_conductance_II(1,0.05)
+    g_lin2 = compound_conductance_II(1,0.1)
+    SynG_II = 0.05+((0.1-0.05)*(g_std-g_lin1)/(g_lin2-g_lin1))
+    
+    g_std = compound_conductance_IE(0,g_standard_IE)
+    g_lin1 = compound_conductance_IE(1,0.05)
+    g_lin2 = compound_conductance_IE(1,0.1)
+    SynG_IE = 0.05+((0.1-0.05)*(g_std-g_lin1)/(g_lin2-g_lin1))       
+}
+
+
+
+// ______________________________________
+// Auxiliary vectors for the shaped input
+
+objref temvecIN_plt, temvecPN_plt, spavecIN_plt, spavecPN_plt  
+
+iinj_time = new Vector(tstop/inj_step)
+
+// Interneurons ----------------------------------------------------------------
+proc temshape_INinput() { local i,j,k
+  temiinj_IN = new Vector(tstop/inj_step)
+  for i = 0,((tINinj_on/inj_step)-1) { temiinj_IN.x[i] = 0 }
+  for j = (tINinj_on/inj_step),((tINinj_off/inj_step)-1) { temiinj_IN.x[j] = INinj_amp }
+  for k = (tINinj_off/inj_step),((tstop/inj_step)-1) { temiinj_IN.x[k] = 0 } 
+  iinj_time.indgen(0,tstop,inj_step)
+  
+  if (plotting == 1) {
+      temvecIN_plt = new Graph()
+      temvecIN_plt.size(0,tstop,0,1)
+      temvecIN_plt.label(0.05,0.95,"amp")
+      temvecIN_plt.label(0.95,0.05,"ms")
+      temvecIN_plt.color(2)
+      temvecIN_plt.label(0.95,0.95,"IN")
+      temiinj_IN.plot(temvecIN_plt,4,2)
+  }
+}
+
+proc spashape_INinput() { local i,d,d1,d2
+  spaiinj_IN = new Vector(nIN)
+  
+  
+  // Squared inputs
+  spaiinj_IN.fill(0.000000000001)
+  // Der erste input
+  for i = (spainjIN_M1-int(spainjIN_sd1/2)),(spainjIN_M1+int(spainjIN_sd1/2)) { spaiinj_IN.x[i] = 1 }
+  
+  // Der zweite input
+  //for i = (spainjIN_M2-int(spainjIN_sd2/2)),(spainjIN_M2+int(spainjIN_sd2/2)) { spaiinj_IN.x[i] = spainjIN_ratio } 
+  
+  
+  /*
+  // Gaussian (SD = spainjIN_sd1 and mean = spainjIN_M1)
+  for i = 0,(nIN-1) { 
+      d = abs(i-spainjIN_M1)  // Distance from cell position to Gaussian-Mean.
+      if (d > nIN/2) { d = nIN-d }
+      spaiinj_IN.x[i] = exp(-0.5*(d/spainjIN_sd1)*(d/spainjIN_sd1))
+  }
+  */
+  
+  /*
+  // 2 Gaussians (SD = spainjIN_sd1 and mean = spainjIN_M1 bzw. sd2 and M2)
+  for i = 0,(nIN-1) { 
+      d1 = abs(i-spainjIN_M1)
+      if (d1 > nIN/2) { d1 = nIN-d1 }
+      d2 = abs(i-spainjIN_M2)
+      if (d2 > nIN/2) { d2 = nIN-d2 }
+      spaiinj_IN.x[i] = (exp(-0.5*(d1/spainjIN_sd1)*(d1/spainjIN_sd1))) + spainjIN_ratio*(exp(-0.5*(d2/spainjIN_sd2)*(d2/spainjIN_sd2))) 
+  }
+  */
+  
+  if (plotting == 1) {  
+      spavecIN_plt = new Graph()
+      spavecIN_plt.size(0,nIN,0,1)
+      spavecIN_plt.label(0.05,0.95,"rel. amp")
+      spavecIN_plt.label(0.95,0.05,"ind(IN)")
+      spaiinj_IN.plot(spavecIN_plt,2,2)
+  }  
+}
+
+// Principal neurons ----------------------------------------------------------------
+proc temshape_PNinput() { local i,j,k
+  temiinj_PN = new Vector(tstop/inj_step)
+  for i = 0,((tPNinj_on/inj_step)-1) { temiinj_PN.x[i] = 0 }
+  for j = (tPNinj_on/inj_step),((tPNinj_off/inj_step)-1) { temiinj_PN.x[j] = PNinj_amp }
+  for k = (tPNinj_off/inj_step),((tstop/inj_step)-1) { temiinj_PN.x[k] = 0 } 
+  iinj_time.indgen(0,tstop,inj_step)
+  
+  if (plotting == 1) {
+      temvecPN_plt = new Graph()
+      temvecPN_plt.size(0,tstop,0,1)
+      temvecPN_plt.label(0.05,0.95,"amp")
+      temvecPN_plt.label(0.95,0.05,"ms")
+      temvecPN_plt.color(2)
+      temvecPN_plt.label(0.95,0.95,"PN")
+      temiinj_PN.plot(temvecPN_plt,4,2)
+  }
+}
+
+proc spashape_PNinput() { local i,d,d1,d2
+  spaiinj_PN = new Vector(nPN)
+  
+    
+  // Squared inputs
+  spaiinj_PN.fill(0.000000000001)
+  // Der erste input
+  for i = (spainjPN_M1*(nPN/nIN)-int(spainjPN_sd1*(nPN/nIN)/2)),(spainjPN_M1*(nPN/nIN)+int(spainjPN_sd1*(nPN/nIN)/2)) { spaiinj_PN.x[i] = 1 }
+  
+  // Der zweite input
+  //for i = (spainjPN_M2*(nPN/nIN)-int(spainjPN_sd2*(nPN/nIN)/2)),(spainjPN_M2*(nPN/nIN)+int(spainjPN_sd2*(nPN/nIN)/2)) { spaiinj_PN.x[i] = spainjPN_ratio } 
+  
+  
+  /*
+  // Gaussian (SD = spainjPN_sd1*(nPN/nIN) and mean = spainjPN_M1*(nPN/nIN))
+  for i = 0,(nPN-1) { 
+      d = abs(i-spainjPN_M1*(nPN/nIN))  // Distance from cell position to Gaussian-Mean.
+      if (d > nPN/2) { d = nPN-d }
+      spaiinj_PN.x[i] = exp(-0.5*(d/(spainjPN_sd1*(nPN/nIN)))*(d/(spainjPN_sd1*(nPN/nIN))))
+  }
+  */
+  
+  /*
+  // 2 Gaussians (SD = spainjPN_sd1*(nPN/nIN) and mean = spainjPN_M1*(nPN/nIN) bzw. sd2 and M2)
+  for i = 0,(nPN-1) { 
+      d1 = abs(i-spainjPN_M1*(nPN/nIN))
+      if (d1 > nPN/2) { d1 = nPN-d1 }
+      d2 = abs(i-spainjPN_M2*(nPN/nIN))
+      if (d2 > nPN/2) { d2 = nPN-d2 }
+      spaiinj_PN.x[i] = (exp(-0.5*(d1/(spainjPN_sd1*(nPN/nIN)))*(d1/(spainjPN_sd1*(nPN/nIN))))) + spainjPN_ratio*(exp(-0.5*(d2/(spainjPN_sd2*(nPN/nIN)))*(d2/(spainjPN_sd2*(nPN/nIN))))) 
+  }
+  */
+  
+  if (plotting == 1) {  
+      spavecPN_plt = new Graph()
+      spavecPN_plt.size(0,nPN,0,1)
+      spavecPN_plt.label(0.05,0.95,"rel. amp")
+      spavecPN_plt.label(0.95,0.05,"ind(PN)")
+      spaiinj_PN.plot(spavecPN_plt,2,2)
+  }   
+}
+
+// _____________________________________________________________________________
+//
