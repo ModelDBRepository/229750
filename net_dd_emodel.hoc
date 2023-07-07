@@ -123,7 +123,7 @@ proc connect_pre_IE() {local f, axdel, strength
    $o1.soma_interneuron pre_list_IE.append( new NetCon(&v(1),syn_IE[synno],-20,SynDel+axdel,strength))
   // list.append() adds new items to the list
 	// NetCon: (presynaptic variable, target, thresh, delay, weight)
-	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 æS peak 
+	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 ÂµS peak 
 	// conversion: 'SynG' [mS/cm^2] to 'weight' [uS] using the factor 'fsurf' derived from the 
 	// surface area [um^2] and the conversion of the units
 }
@@ -163,7 +163,7 @@ proc connect_pre_EE() {local f, axdel, strength
    $o1.soma_principalneuron pre_list_EE.append( new NetCon(&v(1),syn_EE,-20,SynDel+axdel,strength))
    // list.append() adds new items to the list
 	// NetCon: (presynaptic variable, target, thresh, delay, weight)
-	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 æS peak 
+	// the last argument is the 'weight' with a range of [0-1] where 1 corresponds to 1 ÂµS peak 
 	// conversion: 'SynG' [mS/cm^2] to 'weight' [uS] using the factor 'fsurf' derived from the 
 	// surface area [um^2] and the conversion of the units
 }
